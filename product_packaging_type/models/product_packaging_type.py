@@ -32,7 +32,7 @@ class ProductPackagingType(models.Model):
     def name_get(self):
         result = []
         for record in self:
-            result.append((record.id, "{} ({})".format(record.name, record.code)))
+            result.append((record.id, f"{record.name} ({record.code})"))
         return result
 
 
@@ -128,7 +128,7 @@ class ProductPackaging(models.Model):
         )
         res = []
         for code, qty in qty_per_type:
-            res.append("{} {}".format(qty, code))
+            res.append(f"{qty} {code}")
         return "; ".join(res)
 
     def _make_qty_per_type(self, qty_per_type_mapping, format_pattern=None):
