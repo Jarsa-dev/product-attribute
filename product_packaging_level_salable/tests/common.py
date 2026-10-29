@@ -85,6 +85,6 @@ class Common(BaseCommon):
         sale_form.partner_id = cls.partner
         with sale_form.order_line.new() as line:
             line.product_id = cls.product
-            line.product_uom = cls.product.uom_id
+            line.product_uom_id = cls.product.uom_id
         cls.order = sale_form.save()
         cls.order_line = cls.order.order_line
