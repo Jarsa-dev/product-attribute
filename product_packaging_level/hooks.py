@@ -8,7 +8,6 @@ from odoo import SUPERUSER_ID, api
 def pre_init_hook(env):
     if openupgrade.table_exists(env.cr, "product_packaging_type"):
         env = api.Environment(env.cr, SUPERUSER_ID, {})
-        # Former version of the module is present
         models = [("product.packaging.type", "product.packaging.level")]
         openupgrade.rename_models(env.cr, models)
         fields = [

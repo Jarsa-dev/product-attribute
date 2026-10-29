@@ -3,11 +3,11 @@
 
 {
     "name": "Product Packaging Level",
-    "version": "18.0.1.1.0",
+    "version": "19.0.1.0.0",
     "development_status": "Beta",
     "category": "Product",
     "summary": "This module binds a product packaging to a packaging level",
-    "author": "Camptocamp, " "Odoo Community Association (OCA)",
+    "author": "Camptocamp, Odoo Community Association (OCA)",
     "website": "https://github.com/OCA/product-attribute",
     "license": "LGPL-3",
     "depends": ["stock"],

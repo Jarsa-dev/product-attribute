@@ -78,7 +78,7 @@ class TestProductPackagingLevel(common.TransactionCase):
     def test_name_by_package_type(self):
         # Required for `package_type_id` to be visible in the view
         self.env.user.write(
-            {"groups_id": [(4, self.env.ref("stock.group_tracking_lot").id)]}
+            {"group_ids": [(4, self.env.ref("stock.group_tracking_lot").id)]}
         )
         self.packaging.name_policy = "by_package_type"
         self.packaging.package_type_id = self.package_type_box
@@ -87,7 +87,7 @@ class TestProductPackagingLevel(common.TransactionCase):
     def test_name_by_user_defined(self):
         # Required for `package_type_id` to be visible in the view
         self.env.user.write(
-            {"groups_id": [(4, self.env.ref("stock.group_tracking_lot").id)]}
+            {"group_ids": [(4, self.env.ref("stock.group_tracking_lot").id)]}
         )
         packaging_name = "user defined - not box - not pallet"
         self.packaging.packaging_level_id.name_policy = "user_defined"
@@ -105,7 +105,7 @@ class TestProductPackagingLevel(common.TransactionCase):
         internal_group = self.env.ref("base.group_user")
         group_tracking_lot = self.env.ref("stock.group_tracking_lot")
         internal_group.implied_ids -= group_tracking_lot
-        self.env.user.groups_id -= group_tracking_lot
+        self.env.user.group_ids -= group_tracking_lot
         with self.assertRaises(ValidationError):
             self.packaging.packaging_level_id.write({"name_policy": "by_package_type"})
 

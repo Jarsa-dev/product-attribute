@@ -4,12 +4,58 @@ from collections import OrderedDict
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
+from odoo.tools import float_compare, float_round
 
 
 class ProductPackaging(models.Model):
-    _inherit = "product.packaging"
+    _name = "product.packaging"
+    _description = "Product Packaging"
+    _order = "product_id, sequence, id"
+    _check_company_auto = True
 
-    name = fields.Char(compute="_compute_name", store=True, readonly=False)
+    name = fields.Char(
+        string="Product Packaging",
+        compute="_compute_name",
+        store=True,
+        readonly=False,
+        required=True,
+    )
+    sequence = fields.Integer(
+        default=1,
+        compute="_compute_sequence",
+        store=True,
+        readonly=False,
+        help="The first in the sequence is the default one.",
+    )
+    product_id = fields.Many2one(
+        "product.product",
+        check_company=True,
+        required=True,
+        ondelete="cascade",
+    )
+    qty = fields.Float(
+        string="Contained Quantity",
+        default=1.0,
+        digits="Product Unit",
+        help="Quantity of products contained in the packaging.",
+    )
+    barcode = fields.Char(
+        copy=False,
+        help="Barcode used for packaging identification.",
+    )
+    product_uom_id = fields.Many2one(
+        "uom.uom", related="product_id.uom_id", readonly=True
+    )
+    company_id = fields.Many2one("res.company", index=True)
+    package_type_id = fields.Many2one("stock.package.type")
+    route_ids = fields.Many2many(
+        "stock.route",
+        "stock_route_packaging",
+        "packaging_id",
+        "route_id",
+        string="Routes",
+        domain=[("package_type_selectable", "=", True)],
+    )
     packaging_level_id = fields.Many2one(
         "product.packaging.level",
         required=True,
@@ -23,7 +69,57 @@ class ProductPackaging(models.Model):
         compute="_compute_qty_per_level", string="Qty per package level"
     )
     name_policy = fields.Selection(related="packaging_level_id.name_policy")
-    sequence = fields.Integer(compute="_compute_sequence", store=True, readonly=False)
+
+    _positive_qty = models.Constraint(
+        "CHECK(qty > 0)", "Contained Quantity should be positive."
+    )
+    _barcode_uniq = models.Constraint(
+        "unique(barcode)", "A barcode can only be assigned to one packaging."
+    )
+
+    @api.constrains("barcode")
+    def _check_barcode_uniqueness(self):
+        domain = [("barcode", "in", [b for b in self.mapped("barcode") if b])]
+        if self.env["product.product"].search(domain, order="id", limit=1):
+            raise ValidationError(self.env._("A product already uses the barcode"))
+
+    def _check_qty(self, product_qty, uom_id, rounding_method="HALF-UP"):
+        self.ensure_one()
+        default_uom = self.product_id.uom_id
+        packaging_qty = default_uom._compute_quantity(self.qty, uom_id)
+        if product_qty and packaging_qty:
+            rounded_qty = (
+                float_round(
+                    product_qty / packaging_qty,
+                    precision_rounding=1.0,
+                    rounding_method=rounding_method,
+                )
+                * packaging_qty
+            )
+            return (
+                rounded_qty
+                if float_compare(
+                    rounded_qty, product_qty, precision_rounding=default_uom.rounding
+                )
+                else product_qty
+            )
+        return product_qty
+
+    def _find_suitable_product_packaging(self, product_qty, uom_id):
+        packagings = self.sorted(lambda p: p.qty, reverse=True)
+        for packaging in packagings:
+            new_qty = packaging._check_qty(product_qty, uom_id)
+            if new_qty == product_qty:
+                return packaging
+        return self.env["product.packaging"]
+
+    def _compute_qty(self, qty, qty_uom=False):
+        self.ensure_one()
+        if qty_uom:
+            qty = qty_uom._compute_quantity(qty, self.product_uom_id)
+        return float_round(
+            qty / self.qty, precision_rounding=self.product_uom_id.rounding
+        )
 
     def default_packaging_level_id(self):
         return self.env["product.packaging.level"].search(
@@ -37,23 +133,18 @@ class ProductPackaging(models.Model):
         )
         for packaging in packages_name_by_level:
             product = packaging.product_id
-            # do not use a mapped/filtered because it would union the duplicates
             packaging_level_ids = [
                 packaging.packaging_level_id.id
                 for packaging in product.packaging_ids
-                # We have to allow several packaging using the default type,
-                # because when we install the module on an existing database,
-                # the default value will be set to default and we'll have
-                # duplicates. Anyway "default" is not meant to be used as a
-                # real type.
                 if not packaging.packaging_level_id.is_default
             ]
             if len(set(packaging_level_ids)) != len(packaging_level_ids):
                 raise ValidationError(
                     self.env._(
                         "It is forbidden to have different packagings "
-                        "with the same level for a given product ({})."
-                    ).format(product.display_name)
+                        "with the same level for a given product (%(product)s).",
+                        product=product.display_name,
+                    )
                 )
 
     @api.depends("packaging_level_id")
@@ -132,20 +223,20 @@ class ProductPackaging(models.Model):
         for rec in self:
             rec.name = rec._get_name_from_policy()
 
-    # Keep this method to respect translations on level name
     @api.depends("product_id", "packaging_level_id", "name_policy")
-    def _compute_display_name(self):  # pylint: disable=W8110
-        super()._compute_display_name()
+    def _compute_display_name(self):
+        res = super()._compute_display_name()
         for record in self:
             if record.product_id and record.packaging_level_id:
                 record.display_name = record._get_name_from_policy(lang=self.env.lang)
+        return res
 
     def _get_name_from_policy(self, lang=None):
         new_name = self.name
         if self.name_policy == "by_package_level":
             lang = lang or self.packaging_level_id.default_lang_id.code
-            self = self.with_context(lang=lang)
-            new_name = self.packaging_level_id.display_name
+            rec = self.with_context(lang=lang)
+            new_name = rec.packaging_level_id.display_name
         elif self.name_policy == "by_package_type":
             new_name = self.package_type_id.name
         return new_name
